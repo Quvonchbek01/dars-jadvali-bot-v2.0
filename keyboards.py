@@ -24,9 +24,9 @@ def back_menu():
 
 def admin_menu():
     return ReplyKeyboardMarkup(keyboard=[
-        [KeyboardButton(text="📊 To'liq statistika"), KeyboardButton(text="👥 Foydalanuvchilar")],
+        [KeyboardButton(text="📊 Umumiy statistika"), KeyboardButton(text="👥 Foydalanuvchilar")],
         [KeyboardButton(text="📨 Broadcast"), KeyboardButton(text="📝 So'nggi fikrlar")],
-        [KeyboardButton(text="🔍 Foydalanuvchi qidirish"), KeyboardButton(text="⬅️ Orqaga")],
+        [KeyboardButton(text="🔍 Foydalanuvchini qidirish"), KeyboardButton(text="⬅️ Orqaga")],
     ], resize_keyboard=True)
 
 
