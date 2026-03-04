@@ -308,17 +308,17 @@ async def back_main_cb(cb: CallbackQuery, state: FSMContext):
 #  🛡 ADMIN PANEL
 # ═══════════════════════════════════════════════════════════════════════════════
 def admin_only(func):
-    async def wrapper(msg, *args, **kwargs):
-        uid = msg.from_user.id if hasattr(msg, 'from_user') else msg.message.from_user.id
-        if uid != ADMIN_ID:
-            if isinstance(msg, CallbackQuery):
-                await msg.answer("❌ Ruxsat yo'q", show_alert=True)
-            else:
-                await msg.answer("❌ Sizda admin huquqlari yo'q.")
-            return
-        return await func(msg, *args, **kwargs)
-    return wrapper
+    async def wrapper(event, *args, **kwargs):
+        user_id = event.from_user.id
 
+        if user_id != ADMIN_ID:
+            if hasattr(event, "answer"):
+                await event.answer("⛔ Siz admin emassiz.")
+            return
+
+        return await func(event, *args, **kwargs)
+
+    return wrapper
 
 @dp.message(Command("admin"))
 @admin_only
