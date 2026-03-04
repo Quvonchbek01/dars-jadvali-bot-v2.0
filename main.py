@@ -312,8 +312,10 @@ def admin_only(func):
         user_id = event.from_user.id
 
         if user_id != ADMIN_ID:
-            if hasattr(event, "answer"):
+            if isinstance(event, types.Message):
                 await event.answer("⛔ Siz admin emassiz.")
+            elif isinstance(event, types.CallbackQuery):
+                await event.answer("⛔ Siz admin emassiz.", show_alert=True)
             return
 
         return await func(event, *args, **kwargs)
