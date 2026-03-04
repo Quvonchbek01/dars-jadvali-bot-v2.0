@@ -91,7 +91,7 @@ async def cmd_start(msg: Message, state: FSMContext):
     text = (
         f"👋 Salom, <b>{msg.from_user.first_name}</b>!\n\n"
         f"🏫 <b>Forish IM</b> dars jadvali botiga xush kelibsiz!\n\n"
-        f"📚 <i>Dars jadvalingizni ko'rish, eslatma o'rnatish va ko'p narsani qilishingiz mumkin.</i>"
+        f"📚 <i>Bot haqidagi eng so'nggi yangiliklarni quyidagi kanal orqali kuzatib borishingiz mumkin: t.me/+zg9gHcIqry40YzMy</i>"
     )
     await msg.answer(text, reply_markup=main_menu())
 
@@ -206,7 +206,7 @@ async def feedback_start_msg(msg: Message, state: FSMContext):
     await state.set_state(FeedbackState.rating)
     await msg.answer(
         "⭐ <b>Botni baholang</b>\n\n"
-        "Quyidagi reytingdan birini tanlang:",
+        "Quyidagilardan birini tanlang: \n(Fikr bildirish funksiyasiga yaqin orada o'zgartirishlar kiritiladi.)",
         reply_markup=feedback_rating_inline()
     )
 
@@ -215,7 +215,7 @@ async def feedback_start_cb(cb: CallbackQuery, state: FSMContext):
     await cb.answer()
     await state.set_state(FeedbackState.rating)
     await cb.message.edit_text(
-        "⭐ <b>Botni baholang</b>\n\nQuyidagi reytingdan birini tanlang:",
+        "⭐ <b>Botni baholang</b>\n\nQuyidagilardan birini tanlang:",
         reply_markup=feedback_rating_inline()
     )
 
@@ -228,7 +228,7 @@ async def handle_rating(cb: CallbackQuery, state: FSMContext):
     await cb.message.edit_text(
         f"{'⭐' * (rating // 2)} <b>Rahmat!</b>\n\n"
         f"✍️ Endi fikringizni yozing:\n"
-        f"<i>Nima yoqdi? Nima yaxshilansa bo'ladi?</i>",
+        f"<i>Sizga botimizdagi nima yoqdi, yoki yoqmadi? Botimizni yanada yaxshiroq qilish uchun nimalar qila olamiz?</i>",
         reply_markup=back_inline("back_main")
     )
 
@@ -276,12 +276,12 @@ async def handle_feedback_text(msg: Message, state: FSMContext):
 async def help_msg(msg: Message):
     await msg.answer(
         "ℹ️ <b>Yordam</b>\n\n"
-        "📚 <b>Dars jadvali</b> — Web ilova orqali sinfingiz jadvalini ko'ring\n"
-        "📊 <b>Statistika</b> — Faolligingiz haqida ma'lumot\n"
-        "⏰ <b>Eslatma</b> — Har kuni 07:30 da jadval yuboriladi\n"
-        "💬 <b>Fikr bildirish</b> — Taklif va shikoyatlaringiz\n\n"
+        "📚 <b>Dars jadvali</b> — Web ilova orqali dars jadvalini ko'rish\n"
+        "📊 <b>Statistika</b> — Faollik statistikangiz haqida ma'lumot\n"
+        "⏰ <b>Eslatma</b> — Kunlik bildirishnoma (daily reminder)\n"
+        "💬 <b>Fikr bildirish</b> — Taklif va shikoyatlar uchun\n\n"
         "📞 Admin: @from_america\n"
-        "🌐 Sayt: imjadval.netlify.app",
+        "🌐 Kanal: t.me/+zg9gHcIqry40YzMy",
         reply_markup=main_menu()
     )
 
