@@ -88,7 +88,18 @@ async def get_user(user_id: int):
             user_id
         )
 
-
+async def get_growth_chart():
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch("""
+            SELECT joined_at::DATE as day, COUNT(*) as cnt
+            FROM users
+            WHERE joined_at > NOW() - INTERVAL '7 days'
+            GROUP BY day
+            ORDER BY day
+        """)
+        return rows
+        
 async def is_banned(user_id: int):
     pool = await get_pool()
     async with pool.acquire() as conn:
