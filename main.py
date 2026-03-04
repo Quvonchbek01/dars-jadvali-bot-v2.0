@@ -48,16 +48,16 @@ ADMIN_ID    = 5883662749
 bot = Bot(token=TOKEN, parse_mode="HTML")
 dp  = Dispatcher(storage=MemoryStorage())
 
-ban_mw = BanMiddleware()
+# ── MIDDLEWARES ───────────────────────────────────────────────────────────────
 dp.message.middleware(ThrottleMiddleware(rate_limit=0.8))
 dp.callback_query.middleware(ThrottleMiddleware(rate_limit=0.5))
-dp.message.middleware(ban_mw)
-dp.callback_query.middleware(ban_mw)
+dp.message.middleware(BanMiddleware())
+dp.callback_query.middleware(BanMiddleware())
 
 # ── FSM STATES ────────────────────────────────────────────────────────────────
 class FeedbackState(StatesGroup):
-    rating  = State()
-    text    = State()
+    rating = State()
+    text   = State()
 
 class BroadcastState(StatesGroup):
     text    = State()
@@ -68,66 +68,65 @@ class AdminState(StatesGroup):
     dm_user     = State()
 
 
-# ── ADMIN CHECK (inline funksiya — decorator emas) ────────────────────────────
-async def check_admin(event) -> bool:
-    """True qaytarsa — admin, False qaytarsa — rad etildi."""
-    if event.from_user.id == ADMIN_ID:
-        return True
-    if isinstance(event, types.Message):
-        await event.answer("Siz admin emassiz.")
-    elif isinstance(event, types.CallbackQuery):
-        await event.answer("Siz admin emassiz.", show_alert=True)
-    return False
+# ── ADMIN DECORATOR ───────────────────────────────────────────────────────────
+# @wraps MAJBURIY — bo'lmasa aiogram handler nomini yo'qotib, ro'yxatdan o'tmaydi
+def admin_only(func):
+    @wraps(func)
+    async def wrapper(event, *args, **kwargs):
+        uid = event.from_user.id
+        if uid != ADMIN_ID:
+            if isinstance(event, types.Message):
+                await event.answer("⛔ Siz admin emassiz.")
+            elif isinstance(event, types.CallbackQuery):
+                await event.answer("⛔ Siz admin emassiz.", show_alert=True)
+            return
+        return await func(event, *args, **kwargs)
+    return wrapper
 
 
 # ── REACTIONS ─────────────────────────────────────────────────────────────────
-REACTION_MAP = {
-    "salom":     ["👋", "🤝", "❤️"],
-    "assalomu":  ["👋", "🤝"],
-    "hi":        ["👋"],
-    "hello":     ["👋"],
-    "hayr":      ["👋", "❤️"],
-    "xayr":      ["👋"],
-    "rahmat":    ["🙏", "❤️", "🔥"],
-    "raxmat":    ["🙏", "❤️"],
-    "tashakkur": ["🙏", "❤️"],
-    "?":         ["🤔", "👀"],
-    "yaxshi":    ["👍", "🔥", "❤️"],
-    "zo'r":      ["🔥", "🎉", "👍"],
-    "ajoyib":    ["🔥", "🎉"],
-    "super":     ["🔥", "🎉"],
-    "barakalla": ["🔥", "🎉", "🏆"],
-    "ha":        ["👍"],
-    "yomon":     ["😢", "❤️"],
-    "xato":      ["😢"],
-    "ishlamaydi":["😢", "🤔"],
-    "muammo":    ["🤔"],
-    "yordam":    ["🤝"],
-    "haha":      ["😂", "🔥"],
-    "lol":       ["😂"],
-    "jadval":    ["📚", "👀"],
-    "dars":      ["📚"],
-    "love":      ["❤️"],
-    "sevaman":   ["❤️"],
+REACTIONS = {
+    "salom":      "👋",
+    "assalomu":   "👋",
+    "xayr":       "👋",
+    "hayr":       "👋",
+    "rahmat":     "🙏",
+    "raxmat":     "🙏",
+    "tashakkur":  "🙏",
+    "yaxshi":     "👍",
+    "zo'r":       "🔥",
+    "super":      "🔥",
+    "ajoyib":     "🎉",
+    "barakalla":  "🏆",
+    "ha":         "👍",
+    "yomon":      "😢",
+    "xato":       "😢",
+    "ishlamaydi": "🤔",
+    "muammo":     "🤔",
+    "haha":       "😂",
+    "lol":        "😂",
+    "?":          "🤔",
 }
-DEFAULT_REACTIONS = ["👍", "🔥", "❤️", "👀", "🎉"]
+DEFAULT_REACTIONS = ["👍", "❤️", "🔥", "👀"]
 
-async def react_to_user_message(msg: Message):
+async def send_reaction(msg: Message):
+    """Foydalanuvchi xabariga vaziyatga mos reaksiya — faqat oddiy foydalanuvchilarga"""
     if msg.from_user.id == ADMIN_ID:
         return
-    text_lower = (msg.text or "").lower()
-    chosen = None
-    for keyword, emojis in REACTION_MAP.items():
-        if keyword in text_lower:
-            chosen = random.choice(emojis)
+    text = (msg.text or "").lower()
+    emoji = None
+    for word, reaction in REACTIONS.items():
+        if word in text:
+            emoji = reaction
             break
-    if not chosen and random.random() < 0.7:
-        chosen = random.choice(DEFAULT_REACTIONS)
-    if chosen:
+    if not emoji:
+        if random.random() < 0.65:
+            emoji = random.choice(DEFAULT_REACTIONS)
+    if emoji:
         try:
             await bot.set_message_reaction(
                 msg.chat.id, msg.message_id,
-                [ReactionTypeEmoji(emoji=chosen)]
+                [ReactionTypeEmoji(emoji=emoji)]
             )
         except Exception:
             pass
@@ -158,11 +157,11 @@ async def cmd_start(msg: Message, state: FSMContext):
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-#  📊 Statistika
+#  📊 Mening statistikam
 # ═══════════════════════════════════════════════════════════════════════════════
 @dp.message(F.text == "📊 Mening statistikam")
 async def user_stats_msg(msg: Message):
-    await react_to_user_message(msg)
+    await send_reaction(msg)
     await _send_user_stats(msg.from_user.id, msg)
 
 @dp.callback_query(F.data == "my_stats")
@@ -173,7 +172,7 @@ async def user_stats_cb(cb: CallbackQuery):
 async def _send_user_stats(user_id: int, target, edit: bool = False):
     user, views, fav = await get_user_stats(user_id)
     if not user:
-        text = "Ma'lumot topilmadi."
+        text = "📊 Ma'lumot topilmadi."
     else:
         joined  = user['joined_at'].strftime('%d.%m.%Y')
         last    = user['last_active'].strftime('%d.%m.%Y %H:%M')
@@ -205,7 +204,7 @@ async def _send_user_stats(user_id: int, target, edit: bool = False):
 # ═══════════════════════════════════════════════════════════════════════════════
 @dp.message(F.text == "⏰ Eslatma")
 async def reminder_msg(msg: Message):
-    await react_to_user_message(msg)
+    await send_reaction(msg)
     await _show_reminder_menu(msg.from_user.id, msg)
 
 @dp.callback_query(F.data == "reminder_menu")
@@ -219,8 +218,8 @@ async def _show_reminder_menu(user_id: int, target, edit: bool = False):
         rem = await conn.fetchrow(
             "SELECT class_name, enabled FROM reminders WHERE user_id=$1", user_id
         )
-    status  = "✅ Yoqilgan" if (rem and rem['enabled']) else "❌ O'chirilgan"
-    cls     = rem['class_name'] if rem else None
+    status = "✅ Yoqilgan" if (rem and rem['enabled']) else "❌ O'chirilgan"
+    cls    = rem['class_name'] if rem else None
     text = (
         f"⏰ <b>Kunlik eslatma</b>\n\n"
         f"Har kuni ertalab <b>07:30</b> da bugungi dars jadvalingiz yuboriladi.\n\n"
@@ -248,7 +247,7 @@ async def set_reminder_cb(cb: CallbackQuery):
 async def disable_reminder_cb(cb: CallbackQuery):
     result = await toggle_reminder(cb.from_user.id)
     if result is False:
-        await cb.answer("Avval sinfni tanlang", show_alert=True)
+        await cb.answer("⚠️ Avval sinfni tanlang", show_alert=True)
         return
     status = "yoqildi ✅" if result else "o'chirildi ❌"
     await cb.answer(f"Eslatma {status}", show_alert=True)
@@ -260,7 +259,7 @@ async def disable_reminder_cb(cb: CallbackQuery):
 # ═══════════════════════════════════════════════════════════════════════════════
 @dp.message(F.text == "💬 Fikr bildirish")
 async def feedback_start_msg(msg: Message, state: FSMContext):
-    await react_to_user_message(msg)
+    await send_reaction(msg)
     await state.set_state(FeedbackState.rating)
     await msg.answer(
         "⭐ <b>Botni baholang</b>\n\nQuyidagilardan birini tanlang:",
@@ -285,7 +284,7 @@ async def handle_rating(cb: CallbackQuery, state: FSMContext):
     await cb.message.edit_text(
         f"{'⭐' * (rating // 2)} <b>Rahmat!</b>\n\n"
         f"✍️ Endi fikringizni yozing:\n"
-        f"<i>Yoqqan, yoqmagan narsalar. Botni yaxshilash uchun takliflar ham mamnuniyat bilan qabul qilinadi!</i>",
+        f"<i>Sizga botimizdagi nima yoqdi, yoki yoqmadi?</i>",
         reply_markup=back_inline("back_main")
     )
 
@@ -309,8 +308,7 @@ async def handle_feedback_text(msg: Message, state: FSMContext):
     )
     try:
         await bot.set_message_reaction(
-            msg.chat.id, msg.message_id,
-            [ReactionTypeEmoji(emoji="🙏")]
+            msg.chat.id, msg.message_id, [ReactionTypeEmoji(emoji="🙏")]
         )
     except Exception:
         pass
@@ -326,13 +324,13 @@ async def handle_feedback_text(msg: Message, state: FSMContext):
 # ═══════════════════════════════════════════════════════════════════════════════
 @dp.message(F.text == "ℹ️ Yordam")
 async def help_msg(msg: Message):
-    await react_to_user_message(msg)
+    await send_reaction(msg)
     await msg.answer(
         "ℹ️ <b>Yordam</b>\n\n"
         "📚 <b>Dars jadvali</b> — Web ilova orqali dars jadvalini ko'rish\n"
-        "📊 <b>Statistika</b> — Faollik statistikangiz\n"
+        "📊 <b>Statistika</b> — Faollik statistikangiz haqida ma'lumot\n"
         "⏰ <b>Eslatma</b> — Kunlik bildirishnoma (07:30)\n"
-        "💬 <b>Fikr bildirish</b> — Taklif va shikoyatlar\n\n"
+        "💬 <b>Fikr bildirish</b> — Taklif va shikoyatlar uchun\n\n"
         "📞 Admin: @from_america\n"
         "🌐 Kanal: t.me/+zg9gHcIqry40YzMy",
         reply_markup=main_menu()
@@ -340,7 +338,7 @@ async def help_msg(msg: Message):
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-#  Orqaga
+#  ⬅️ Orqaga
 # ═══════════════════════════════════════════════════════════════════════════════
 @dp.message(F.text == "⬅️ Orqaga")
 async def go_back(msg: Message, state: FSMContext):
@@ -358,45 +356,29 @@ async def back_main_cb(cb: CallbackQuery, state: FSMContext):
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-#  Noma'lum xabarlar
-# ═══════════════════════════════════════════════════════════════════════════════
-@dp.message()
-async def unknown_message(msg: Message, state: FSMContext):
-    current_state = await state.get_state()
-    if current_state is not None:
-        return
-    if msg.from_user.id != ADMIN_ID:
-        await react_to_user_message(msg)
-        await msg.answer(
-            "📋 Pastdagi tugmalardan foydalaning yoki /start bosing.",
-            reply_markup=main_menu()
-        )
-
-
-# ═══════════════════════════════════════════════════════════════════════════════
 #  🛡 ADMIN PANEL
-#  MUHIM: aiogram 3.x da @dp.message eng yuqorida, admin tekshiruvi ichida
+#  MUHIM: aiogram 3.x da @dp.* dekoratori BIRINCHI, @admin_only IKKINCHI keladi
+#  Chunki Python dekoratorlarni pastdan yuqoriga qo'llaydi:
+#    @dp.message  <-- 2. dp.message(admin_only(func)) -- bu to'g'ri
+#    @admin_only  <-- 1. avval admin_only wraplaydi
 # ═══════════════════════════════════════════════════════════════════════════════
 @dp.message(Command("admin"))
-async def admin_panel(msg: Message, state: FSMContext):
-    if not await check_admin(msg):
-        return
+@admin_only
+async def cmd_admin(msg: Message, state: FSMContext):
     await state.clear()
     stats = await get_full_stats()
     await msg.answer(
         f"🛡 <b>Admin panel</b>\n\n"
-        f"👥 Jami: <b>{stats['total']}</b> | Bugun faol: <b>{stats['today']}</b>",
+        f"👥 Jami: <b>{stats['total']}</b> | Bugun: <b>{stats['today']}</b>",
         reply_markup=admin_menu()
     )
 
 
 @dp.message(F.text == "📊 To'liq statistika")
+@admin_only
 async def admin_full_stats(msg: Message):
-    if not await check_admin(msg):
-        return
     stats  = await get_full_stats()
     growth = await get_growth_chart()
-
     if growth:
         max_cnt = max(r['cnt'] for r in growth) or 1
         chart_lines = []
@@ -404,31 +386,28 @@ async def admin_full_stats(msg: Message):
             bar_len = round(r['cnt'] / max_cnt * 12)
             bar     = "█" * bar_len + "░" * (12 - bar_len)
             day_str = r['day'].strftime('%d.%m')
-            chart_lines.append(f"<code>{day_str} |{bar}| {r['cnt']}</code>")
+            chart_lines.append(f"<code>{day_str} │{bar}│ {r['cnt']}</code>")
         chart = "\n".join(chart_lines)
     else:
         chart = "<i>Ma'lumot yo'q</i>"
-
     top = ""
     if stats['top_classes']:
         for i, row in enumerate(stats['top_classes'], 1):
             top += f"  {i}. {row['class_name']} — {row['cnt']} marta\n"
-
     await msg.answer(
         f"📊 <b>Bot statistikasi</b>\n\n"
-        f"👥 Jami: <b>{stats['total']}</b>\n"
+        f"👥 Jami foydalanuvchilar: <b>{stats['total']}</b>\n"
         f"📅 Bugun faol: <b>{stats['today']}</b>\n"
         f"📆 Hafta ichida: <b>{stats['week']}</b>\n"
         f"🚫 Banned: <b>{stats['banned']}</b>\n\n"
         f"📈 <b>So'nggi 7 kun o'sishi:</b>\n{chart}\n\n"
-        f"🏆 <b>Eng ko'p ko'rilgan sinflar:</b>\n{top or '  —'}"
+        f"🏆 <b>Eng ko'p ko'rilgan sinflar (7 kun):</b>\n{top or '  —'}"
     )
 
 
 @dp.message(F.text == "👥 Foydalanuvchilar")
+@admin_only
 async def admin_users(msg: Message):
-    if not await check_admin(msg):
-        return
     pool = await get_pool()
     async with pool.acquire() as conn:
         rows = await conn.fetch(
@@ -447,23 +426,21 @@ async def admin_users(msg: Message):
 
 
 @dp.message(F.text == "🔍 Foydalanuvchi qidirish")
+@admin_only
 async def admin_search_start(msg: Message, state: FSMContext):
-    if not await check_admin(msg):
-        return
     await state.set_state(AdminState.search_user)
     await msg.answer("🔍 Ism, username yoki ID kiriting:", reply_markup=back_menu())
 
 @dp.message(AdminState.search_user)
+@admin_only
 async def admin_search_exec(msg: Message, state: FSMContext):
-    if not await check_admin(msg):
-        return
     if msg.text == "⬅️ Orqaga":
         await state.clear()
         await msg.answer("🛡 Admin panel", reply_markup=admin_menu())
         return
     results = await search_user(msg.text)
     if not results:
-        await msg.answer("Topilmadi.")
+        await msg.answer("❌ Topilmadi.")
         return
     for r in results:
         uname  = f"@{r['username']}" if r['username'] else "—"
@@ -481,13 +458,11 @@ async def admin_search_exec(msg: Message, state: FSMContext):
 
 
 @dp.callback_query(F.data.startswith("ban:"))
+@admin_only
 async def admin_ban(cb: CallbackQuery):
-    if not await check_admin(cb):
-        return
     uid = int(cb.data.split(":")[1])
     await ban_user(uid)
-    ban_mw.invalidate(uid)
-    await cb.answer("Foydalanuvchi banned!", show_alert=True)
+    await cb.answer("🚫 Foydalanuvchi banned!", show_alert=True)
     try:
         await bot.send_message(uid, "🚫 Siz botdan chiqarib yuborldingiz.")
     except Exception:
@@ -497,22 +472,19 @@ async def admin_ban(cb: CallbackQuery):
     )
 
 @dp.callback_query(F.data.startswith("unban:"))
+@admin_only
 async def admin_unban(cb: CallbackQuery):
-    if not await check_admin(cb):
-        return
     uid = int(cb.data.split(":")[1])
     await unban_user(uid)
-    ban_mw.invalidate(uid)
-    await cb.answer("Foydalanuvchi ruxsat berildi!", show_alert=True)
+    await cb.answer("✅ Foydalanuvchi ruxsat berildi!", show_alert=True)
     await cb.message.edit_reply_markup(
         reply_markup=admin_user_actions_inline(uid, False)
     )
 
 
 @dp.callback_query(F.data.startswith("dm:"))
+@admin_only
 async def admin_dm_start(cb: CallbackQuery, state: FSMContext):
-    if not await check_admin(cb):
-        return
     uid = int(cb.data.split(":")[1])
     await state.set_state(AdminState.dm_user)
     await state.update_data(dm_target=uid)
@@ -523,9 +495,8 @@ async def admin_dm_start(cb: CallbackQuery, state: FSMContext):
     )
 
 @dp.message(AdminState.dm_user)
+@admin_only
 async def admin_dm_send(msg: Message, state: FSMContext):
-    if not await check_admin(msg):
-        return
     if msg.text == "⬅️ Orqaga":
         await state.clear()
         await msg.answer("🛡 Admin panel", reply_markup=admin_menu())
@@ -536,17 +507,16 @@ async def admin_dm_send(msg: Message, state: FSMContext):
         await bot.send_message(uid, f"📨 <b>Admin xabari:</b>\n\n{msg.text}")
         await msg.answer("✅ Xabar yuborildi.", reply_markup=admin_menu())
     except Exception as e:
-        await msg.answer(f"Xatolik: {e}", reply_markup=admin_menu())
+        await msg.answer(f"❌ Xatolik: {e}", reply_markup=admin_menu())
     await state.clear()
 
 
 @dp.message(F.text == "📝 So'nggi fikrlar")
+@admin_only
 async def admin_feedbacks(msg: Message):
-    if not await check_admin(msg):
-        return
     rows = await get_recent_feedback(8)
     if not rows:
-        await msg.answer("Hozircha fikr yo'q.")
+        await msg.answer("📭 Hozircha fikr yo'q.")
         return
     lines = ["📝 <b>So'nggi fikrlar:</b>\n"]
     for r in rows:
@@ -560,9 +530,8 @@ async def admin_feedbacks(msg: Message):
 
 
 @dp.message(F.text == "📨 Broadcast")
+@admin_only
 async def broadcast_start(msg: Message, state: FSMContext):
-    if not await check_admin(msg):
-        return
     await state.set_state(BroadcastState.text)
     await msg.answer(
         "✍️ Barcha foydalanuvchilarga yuboriladigan xabarni kiriting:\n\n"
@@ -571,9 +540,8 @@ async def broadcast_start(msg: Message, state: FSMContext):
     )
 
 @dp.message(BroadcastState.text)
+@admin_only
 async def broadcast_preview(msg: Message, state: FSMContext):
-    if not await check_admin(msg):
-        return
     if msg.text == "⬅️ Orqaga":
         await state.clear()
         await msg.answer("🛡 Admin panel", reply_markup=admin_menu())
@@ -590,9 +558,8 @@ async def broadcast_preview(msg: Message, state: FSMContext):
     )
 
 @dp.callback_query(F.data == "broadcast_confirm")
+@admin_only
 async def broadcast_exec(cb: CallbackQuery, state: FSMContext):
-    if not await check_admin(cb):
-        return
     data = await state.get_data()
     text = data.get('bc_text', '')
     await state.clear()
@@ -612,7 +579,7 @@ async def broadcast_exec(cb: CallbackQuery, state: FSMContext):
             fail += 1
 
     for i in range(0, len(users), 25):
-        await asyncio.gather(*[send_one(u) for u in users[i:i+25]])
+        await asyncio.gather(*[send_one(u) for u in users[i:i + 25]])
         await asyncio.sleep(0.05)
         if i % 100 == 0 and i > 0:
             try:
@@ -627,16 +594,15 @@ async def broadcast_exec(cb: CallbackQuery, state: FSMContext):
     )
 
 @dp.callback_query(F.data == "broadcast_cancel")
+@admin_only
 async def broadcast_cancel(cb: CallbackQuery, state: FSMContext):
-    if not await check_admin(cb):
-        return
     await state.clear()
-    await cb.answer("Bekor qilindi")
-    await cb.message.edit_text("Broadcast bekor qilindi.")
+    await cb.answer("❌ Bekor qilindi")
+    await cb.message.edit_text("❌ Broadcast bekor qilindi.")
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-#  DAILY REMINDER SCHEDULER
+#  ⏰ DAILY REMINDER (07:30 har kuni)
 # ═══════════════════════════════════════════════════════════════════════════════
 async def daily_reminder_job():
     while True:
@@ -652,7 +618,7 @@ async def daily_reminder_job():
             continue
 
         reminders = await get_active_reminders()
-        log.info(f"Daily reminder: {len(reminders)} ta foydalanuvchi, kun: {today_name}")
+        log.info(f"Daily reminder: {len(reminders)} ta, kun: {today_name}")
         for rem in reminders:
             try:
                 text = format_schedule(rem['class_name'], today_name)
@@ -665,7 +631,7 @@ async def daily_reminder_job():
             except (TelegramForbiddenError, TelegramBadRequest):
                 pass
             except Exception as e:
-                log.error(f"Reminder error {rem['user_id']}: {e}")
+                log.error(f"Reminder xatolik {rem['user_id']}: {e}")
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -676,12 +642,12 @@ async def on_startup():
     await get_pool()
     await bot.delete_webhook(drop_pending_updates=True)
     await bot.set_webhook(f"{WEBHOOK_URL}/webhook")
-    log.info(f"Webhook o'rnatildi: {WEBHOOK_URL}/webhook")
+    log.info(f"✅ Webhook: {WEBHOOK_URL}/webhook")
     asyncio.create_task(daily_reminder_job())
-    log.info("Daily reminder scheduler ishga tushdi")
+    log.info("⏰ Daily reminder scheduler ishga tushdi")
 
 async def health_check(request):
-    return web.Response(text="Bot ishlayapti!", content_type="text/plain")
+    return web.Response(text="✅ Bot ishlayapti!", content_type="text/plain")
 
 app = web.Application()
 SimpleRequestHandler(dispatcher=dp, bot=bot).register(app, path="/webhook")
