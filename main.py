@@ -1,7 +1,9 @@
 import asyncio
 import os
 import logging
-from datetime import datetime, time as dtime
+import random
+from datetime import datetime, timedelta
+from functools import wraps
 
 from aiogram import Bot, Dispatcher, F, types
 from aiogram.filters import Command, CommandStart
@@ -46,11 +48,13 @@ ADMIN_ID    = 5883662749
 bot = Bot(token=TOKEN, parse_mode="HTML")
 dp  = Dispatcher(storage=MemoryStorage())
 
+ban_mw = BanMiddleware()
+
 # ── MIDDLEWARES ───────────────────────────────────────────────────────────────
 dp.message.middleware(ThrottleMiddleware(rate_limit=0.8))
 dp.callback_query.middleware(ThrottleMiddleware(rate_limit=0.5))
-dp.message.middleware(BanMiddleware())
-dp.callback_query.middleware(BanMiddleware())
+dp.message.middleware(ban_mw)
+dp.callback_query.middleware(ban_mw)
 
 # ── FSM STATES ────────────────────────────────────────────────────────────────
 class FeedbackState(StatesGroup):
@@ -67,6 +71,109 @@ class AdminState(StatesGroup):
     dm_target   = State()
 
 
+# ── ADMIN DECORATOR (aiogram 3.x uchun togri) ─────────────────────────────────
+def admin_only(func):
+    @wraps(func)
+    async def wrapper(event, *args, **kwargs):
+        user_id = event.from_user.id
+        if user_id != ADMIN_ID:
+            if isinstance(event, types.Message):
+                await event.answer("Siz admin emassiz.")
+            elif isinstance(event, types.CallbackQuery):
+                await event.answer("Siz admin emassiz.", show_alert=True)
+            return
+        return await func(event, *args, **kwargs)
+    return wrapper
+
+
+# ── REACTIONS: vaziyatga mos emoji ───────────────────────────────────────────
+# Faqat foydalanuvchi xabarlariga (admin xabarlariga emas)
+
+REACTION_MAP = {
+    # Salomlashish
+    "salom":     ["👋", "🤝", "❤️"],
+    "assalomu":  ["👋", "🤝"],
+    "hi":        ["👋"],
+    "hello":     ["👋"],
+    "hayr":      ["👋", "❤️"],
+    "xayr":      ["👋"],
+    "ko'rishguncha": ["👋"],
+
+    # Rahmat / minnatdorlik
+    "rahmat":    ["🙏", "❤️", "🔥"],
+    "raxmat":    ["🙏", "❤️"],
+    "tashakkur": ["🙏", "❤️"],
+    "sog' bo":   ["❤️"],
+
+    # Savol
+    "?":         ["🤔", "👀"],
+
+    # Ijobiy his-tuygu
+    "yaxshi":    ["👍", "🔥", "❤️"],
+    "zo'r":      ["🔥", "🎉", "👍"],
+    "ajoyib":    ["🔥", "🎉"],
+    "super":     ["🔥", "🎉"],
+    "barakalla": ["🔥", "🎉", "🏆"],
+    "yey":       ["🎉"],
+    "ha":        ["👍"],
+
+    # Salbiy / shikoyat
+    "yomon":     ["😢", "❤️"],
+    "xato":      ["😢"],
+    "ishlamaydi":["😢", "🤔"],
+    "muammo":    ["🤔"],
+    "yordam":    ["🤝"],
+
+    # Kulgili
+    "haha":      ["😂", "🔥"],
+    "lol":       ["😂"],
+    "😂":        ["😂"],
+    "😁":        ["😁"],
+
+    # Raqam / jadval so'rovi
+    "jadval":    ["📚", "👀"],
+    "dars":      ["📚"],
+
+    # Sevgi / ehtirom
+    "❤":         ["❤️"],
+    "love":      ["❤️"],
+    "sevaman":   ["❤️"],
+}
+
+# Hech narsa topilmasa — umumiy reaksiyalar (tasodifiy)
+DEFAULT_REACTIONS = ["👍", "🔥", "❤️", "👀", "🎉"]
+
+async def react_to_user_message(msg: Message):
+    """
+    Foydalanuvchi xabariga vaziyatga mos reaksiya qo'shish.
+    Admin xabarlariga reaksiya qo'shilmaydi.
+    """
+    if msg.from_user.id == ADMIN_ID:
+        return  # Adminga reaksiya emas
+
+    text_lower = (msg.text or "").lower()
+    chosen = None
+
+    for keyword, emojis in REACTION_MAP.items():
+        if keyword in text_lower:
+            chosen = random.choice(emojis)
+            break
+
+    if not chosen:
+        # Tasodifiy — lekin har doim emas (70% ehtimollik)
+        if random.random() < 0.7:
+            chosen = random.choice(DEFAULT_REACTIONS)
+
+    if chosen:
+        try:
+            await bot.set_message_reaction(
+                msg.chat.id, msg.message_id,
+                [ReactionTypeEmoji(emoji=chosen)]
+            )
+        except Exception:
+            pass
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 #  /start
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -74,12 +181,11 @@ class AdminState(StatesGroup):
 async def cmd_start(msg: Message, state: FSMContext):
     await state.clear()
 
-    # DB orqada — foydalanuvchi kutmaydi
     asyncio.create_task(
         register_user(msg.from_user.id, msg.from_user.full_name, msg.from_user.username)
     )
 
-    # Reaction qo'shish (premium)
+    # Xush kelibsiz reaksiyasi
     try:
         await bot.set_message_reaction(
             msg.chat.id, msg.message_id,
@@ -91,7 +197,8 @@ async def cmd_start(msg: Message, state: FSMContext):
     text = (
         f"👋 Salom, <b>{msg.from_user.first_name}</b>!\n\n"
         f"🏫 <b>Forish IM</b> dars jadvali botiga xush kelibsiz!\n\n"
-        f"📚 <i>Bot haqidagi eng so'nggi yangiliklarni quyidagi kanal orqali kuzatib borishingiz mumkin: t.me/+zg9gHcIqry40YzMy</i>"
+        f"📚 <i>Bot haqidagi eng so'nggi yangiliklarni quyidagi kanal orqali kuzatib borishingiz mumkin: "
+        f"t.me/+zg9gHcIqry40YzMy</i>"
     )
     await msg.answer(text, reply_markup=main_menu())
 
@@ -101,6 +208,7 @@ async def cmd_start(msg: Message, state: FSMContext):
 # ═══════════════════════════════════════════════════════════════════════════════
 @dp.message(F.text == "📊 Mening statistikam")
 async def user_stats_msg(msg: Message):
+    await react_to_user_message(msg)
     await _send_user_stats(msg.from_user.id, msg)
 
 @dp.callback_query(F.data == "my_stats")
@@ -117,7 +225,6 @@ async def _send_user_stats(user_id: int, target, edit: bool = False):
         last   = user['last_active'].strftime('%d.%m.%Y %H:%M')
         fav_cls = fav['class_name'] if fav else "—"
 
-        # Mini progress bar
         level = min(user['usage_count'] // 10, 10)
         bar = "█" * level + "░" * (10 - level)
 
@@ -147,6 +254,7 @@ async def _send_user_stats(user_id: int, target, edit: bool = False):
 # ═══════════════════════════════════════════════════════════════════════════════
 @dp.message(F.text == "⏰ Eslatma")
 async def reminder_msg(msg: Message):
+    await react_to_user_message(msg)
     await _show_reminder_menu(msg.from_user.id, msg)
 
 @dp.callback_query(F.data == "reminder_menu")
@@ -155,7 +263,6 @@ async def reminder_cb(cb: CallbackQuery):
     await _show_reminder_menu(cb.from_user.id, cb.message, edit=True)
 
 async def _show_reminder_menu(user_id: int, target, edit: bool = False):
-    from db import get_pool
     pool = await get_pool()
     async with pool.acquire() as conn:
         rem = await conn.fetchrow("SELECT class_name, enabled FROM reminders WHERE user_id=$1", user_id)
@@ -191,7 +298,7 @@ async def set_reminder_cb(cb: CallbackQuery):
 async def disable_reminder_cb(cb: CallbackQuery):
     result = await toggle_reminder(cb.from_user.id)
     if result is False:
-        await cb.answer("⚠️ Avval sinfni tanlang", show_alert=True)
+        await cb.answer("Avval sinfni tanlang", show_alert=True)
         return
     status = "yoqildi ✅" if result else "o'chirildi ❌"
     await cb.answer(f"Eslatma {status}", show_alert=True)
@@ -203,10 +310,10 @@ async def disable_reminder_cb(cb: CallbackQuery):
 # ═══════════════════════════════════════════════════════════════════════════════
 @dp.message(F.text == "💬 Fikr bildirish")
 async def feedback_start_msg(msg: Message, state: FSMContext):
+    await react_to_user_message(msg)
     await state.set_state(FeedbackState.rating)
     await msg.answer(
-        "⭐ <b>Botni baholang</b>\n\n"
-        "Quyidagilardan birini tanlang: \n(Fikr bildirish funksiyasiga yaqin orada o'zgartirishlar kiritiladi.)",
+        "⭐ <b>Botni baholang</b>\n\nQuyidagilardan birini tanlang:",
         reply_markup=feedback_rating_inline()
     )
 
@@ -228,7 +335,8 @@ async def handle_rating(cb: CallbackQuery, state: FSMContext):
     await cb.message.edit_text(
         f"{'⭐' * (rating // 2)} <b>Rahmat!</b>\n\n"
         f"✍️ Endi fikringizni yozing:\n"
-        f"<i>Sizga botimizdagi nima yoqdi, yoki yoqmadi? Botimizni yanada yaxshiroq qilish uchun nimalar qila olamiz?</i>",
+        f"<i>Yoqqan, yoqmagan narsalar haqida yozing. Botni yanada yaxshiroq qilish uchun "
+        f"takliflaringizni kutamiz!</i>",
         reply_markup=back_inline("back_main")
     )
 
@@ -253,7 +361,6 @@ async def handle_feedback_text(msg: Message, state: FSMContext):
         )
     )
 
-    # Reaction
     try:
         await bot.set_message_reaction(
             msg.chat.id, msg.message_id,
@@ -263,7 +370,7 @@ async def handle_feedback_text(msg: Message, state: FSMContext):
         pass
 
     await msg.answer(
-        "✅ <b>Fikringiz qabul qilindi!</b>\n\nRahmat, tez orada javob beramiz. 🙏",
+        "✅ <b>Fikringiz qabul qilindi!</b>\n\nRahmat, tez orada ko'rib chiqamiz. 🙏",
         reply_markup=main_menu()
     )
     await state.clear()
@@ -274,6 +381,7 @@ async def handle_feedback_text(msg: Message, state: FSMContext):
 # ═══════════════════════════════════════════════════════════════════════════════
 @dp.message(F.text == "ℹ️ Yordam")
 async def help_msg(msg: Message):
+    await react_to_user_message(msg)
     await msg.answer(
         "ℹ️ <b>Yordam</b>\n\n"
         "📚 <b>Dars jadvali</b> — Web ilova orqali dars jadvalini ko'rish\n"
@@ -287,7 +395,7 @@ async def help_msg(msg: Message):
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-#  ⬅️ Orqaga / back callbacks
+#  Orqaga / back callbacks
 # ═══════════════════════════════════════════════════════════════════════════════
 @dp.message(F.text == "⬅️ Orqaga")
 async def go_back(msg: Message, state: FSMContext):
@@ -305,38 +413,46 @@ async def back_main_cb(cb: CallbackQuery, state: FSMContext):
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-#  🛡 ADMIN PANEL
+#  Noma'lum xabarlar — foydalanuvchiga reaksiya + yo'naltirish
 # ═══════════════════════════════════════════════════════════════════════════════
-def admin_only(func):
-    async def wrapper(event, *args, **kwargs):
-        user_id = event.from_user.id
+@dp.message()
+async def unknown_message(msg: Message, state: FSMContext):
+    # FSM holatida bo'lmagan xabar
+    current_state = await state.get_state()
+    if current_state is not None:
+        return  # FSM handler ko'taradi
 
-        if user_id != ADMIN_ID:
-            if isinstance(event, types.Message):
-                await event.answer("⛔ Siz admin emassiz.")
-            elif isinstance(event, types.CallbackQuery):
-                await event.answer("⛔ Siz admin emassiz.", show_alert=True)
-            return
+    # Admin bo'lmagan foydalanuvchiga reaksiya
+    if msg.from_user.id != ADMIN_ID:
+        await react_to_user_message(msg)
+        await msg.answer(
+            "📋 Pastdagi tugmalardan foydalaning yoki /start buyrug'ini yuboring.",
+            reply_markup=main_menu()
+        )
 
-        return await func(event, *args, **kwargs)
 
-    return wrapper
-
+# ═══════════════════════════════════════════════════════════════════════════════
+#  ADMIN PANEL
+# ═══════════════════════════════════════════════════════════════════════════════
 @dp.message(Command("admin"))
 @admin_only
 async def admin_panel(msg: Message, state: FSMContext):
     await state.clear()
-    await msg.answer("🛡 <b>Admin panel</b>", reply_markup=admin_menu())
+    stats = await get_full_stats()
+    await msg.answer(
+        f"🛡 <b>Admin panel</b>\n\n"
+        f"👥 Jami: <b>{stats['total']}</b> | Bugun faol: <b>{stats['today']}</b>",
+        reply_markup=admin_menu()
+    )
 
 
-# ── 📊 TO'LIQ STATISTIKA ──────────────────────────────────────────────────────
+# ── TO'LIQ STATISTIKA ────────────────────────────────────────────────────────
 @dp.message(F.text == "📊 To'liq statistika")
 @admin_only
 async def admin_full_stats(msg: Message):
     stats = await get_full_stats()
     growth = await get_growth_chart()
 
-    # Mini chart
     if growth:
         max_cnt = max(r['cnt'] for r in growth) or 1
         chart_lines = []
@@ -344,7 +460,7 @@ async def admin_full_stats(msg: Message):
             bar_len = round(r['cnt'] / max_cnt * 12)
             bar = "█" * bar_len + "░" * (12 - bar_len)
             day_str = r['day'].strftime('%d.%m')
-            chart_lines.append(f"<code>{day_str} │{bar}│ {r['cnt']}</code>")
+            chart_lines.append(f"<code>{day_str} |{bar}| {r['cnt']}</code>")
         chart = "\n".join(chart_lines)
     else:
         chart = "<i>Ma'lumot yo'q</i>"
@@ -366,7 +482,7 @@ async def admin_full_stats(msg: Message):
     await msg.answer(text)
 
 
-# ── 👥 FOYDALANUVCHILAR ───────────────────────────────────────────────────────
+# ── FOYDALANUVCHILAR ─────────────────────────────────────────────────────────
 @dp.message(F.text == "👥 Foydalanuvchilar")
 @admin_only
 async def admin_users(msg: Message):
@@ -380,12 +496,15 @@ async def admin_users(msg: Message):
     for r in rows:
         uname = f"@{r['username']}" if r['username'] else "—"
         last = r['last_active'].strftime('%d.%m %H:%M')
-        lines.append(f"• <b>{r['full_name']}</b> ({uname})\n  ID: <code>{r['user_id']}</code> · {r['usage_count']}x · {last}")
+        lines.append(
+            f"• <b>{r['full_name']}</b> ({uname})\n"
+            f"  ID: <code>{r['user_id']}</code> · {r['usage_count']}x · {last}"
+        )
 
     await msg.answer("\n".join(lines))
 
 
-# ── 🔍 FOYDALANUVCHI QIDIRISH ─────────────────────────────────────────────────
+# ── FOYDALANUVCHI QIDIRISH ────────────────────────────────────────────────────
 @dp.message(F.text == "🔍 Foydalanuvchi qidirish")
 @admin_only
 async def admin_search_start(msg: Message, state: FSMContext):
@@ -402,7 +521,7 @@ async def admin_search_exec(msg: Message, state: FSMContext):
 
     results = await search_user(msg.text)
     if not results:
-        await msg.answer("❌ Topilmadi.")
+        await msg.answer("Topilmadi.")
         return
 
     for r in results:
@@ -427,23 +546,23 @@ async def admin_search_exec(msg: Message, state: FSMContext):
 async def admin_ban(cb: CallbackQuery):
     uid = int(cb.data.split(":")[1])
     await ban_user(uid)
-    await cb.answer("🚫 Foydalanuvchi banned!", show_alert=True)
+    ban_mw.invalidate(uid)  # Cache tozalash
+    await cb.answer("Foydalanuvchi banned!", show_alert=True)
     try:
         await bot.send_message(uid, "🚫 Siz botdan chiqarib yuborldingiz.")
     except Exception:
         pass
-    u = await get_user(uid)
-    if u:
-        await cb.message.edit_reply_markup(
-            reply_markup=admin_user_actions_inline(uid, True)
-        )
+    await cb.message.edit_reply_markup(
+        reply_markup=admin_user_actions_inline(uid, True)
+    )
 
 @dp.callback_query(F.data.startswith("unban:"))
 @admin_only
 async def admin_unban(cb: CallbackQuery):
     uid = int(cb.data.split(":")[1])
     await unban_user(uid)
-    await cb.answer("✅ Foydalanuvchi ruxsat berildi!", show_alert=True)
+    ban_mw.invalidate(uid)  # Cache tozalash
+    await cb.answer("Foydalanuvchi ruxsat berildi!", show_alert=True)
     await cb.message.edit_reply_markup(
         reply_markup=admin_user_actions_inline(uid, False)
     )
@@ -475,27 +594,30 @@ async def admin_dm_send(msg: Message, state: FSMContext):
         await bot.send_message(uid, f"📨 <b>Admin xabari:</b>\n\n{msg.text}")
         await msg.answer("✅ Xabar yuborildi.", reply_markup=admin_menu())
     except Exception as e:
-        await msg.answer(f"❌ Xatolik: {e}", reply_markup=admin_menu())
+        await msg.answer(f"Xatolik: {e}", reply_markup=admin_menu())
     await state.clear()
 
 
-# ── 📝 SO'NGGI FIKRLAR ────────────────────────────────────────────────────────
+# ── SO'NGGI FIKRLAR ───────────────────────────────────────────────────────────
 @dp.message(F.text == "📝 So'nggi fikrlar")
 @admin_only
 async def admin_feedbacks(msg: Message):
     rows = await get_recent_feedback(8)
     if not rows:
-        await msg.answer("📭 Hozircha fikr yo'q.")
+        await msg.answer("Hozircha fikr yo'q.")
         return
     lines = ["📝 <b>So'nggi fikrlar:</b>\n"]
     for r in rows:
         stars = "⭐" * (r['rating'] // 2) if r['rating'] else "—"
         date = r['sent_at'].strftime('%d.%m %H:%M')
-        lines.append(f"• <b>{r['full_name']}</b> · {stars} · {date}\n  <i>{r['feedback_text'][:120]}</i>\n")
+        lines.append(
+            f"• <b>{r['full_name']}</b> · {stars} · {date}\n"
+            f"  <i>{r['feedback_text'][:120]}</i>\n"
+        )
     await msg.answer("\n".join(lines))
 
 
-# ── 📨 BROADCAST ──────────────────────────────────────────────────────────────
+# ── BROADCAST ──────────────────────────────────────────────────────────────────
 @dp.message(F.text == "📨 Broadcast")
 @admin_only
 async def broadcast_start(msg: Message, state: FSMContext):
@@ -538,7 +660,6 @@ async def broadcast_exec(cb: CallbackQuery, state: FSMContext):
     )
 
     sent = fail = 0
-    tasks = []
 
     async def send_one(uid):
         nonlocal sent, fail
@@ -550,10 +671,9 @@ async def broadcast_exec(cb: CallbackQuery, state: FSMContext):
         except Exception:
             fail += 1
 
-    # Batch: 25 ta bir vaqtda
     batch_size = 25
     for i in range(0, len(users), batch_size):
-        batch = users[i:i+batch_size]
+        batch = users[i:i + batch_size]
         await asyncio.gather(*[send_one(u) for u in batch])
         await asyncio.sleep(0.05)
         if i % 100 == 0 and i > 0:
@@ -572,31 +692,26 @@ async def broadcast_exec(cb: CallbackQuery, state: FSMContext):
 @admin_only
 async def broadcast_cancel(cb: CallbackQuery, state: FSMContext):
     await state.clear()
-    await cb.answer("❌ Bekor qilindi")
-    await cb.message.edit_text("❌ Broadcast bekor qilindi.")
+    await cb.answer("Bekor qilindi")
+    await cb.message.edit_text("Broadcast bekor qilindi.")
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-#  ⏰ DAILY REMINDER SCHEDULER (07:30 har kuni)
+#  DAILY REMINDER SCHEDULER (07:30 har kuni)
 # ═══════════════════════════════════════════════════════════════════════════════
 async def daily_reminder_job():
-    """Har kuni 07:30 da ishga tushadi"""
     while True:
         now = datetime.now()
-        # Keyingi 07:30 gacha kutish
         target = now.replace(hour=7, minute=30, second=0, microsecond=0)
         if now >= target:
-            # Ertaga
-            from datetime import timedelta
             target += timedelta(days=1)
         wait_secs = (target - now).total_seconds()
         await asyncio.sleep(wait_secs)
 
-        # Haftaning kuni (0=Dush, 4=Juma, 5-6=dam)
         today_idx = datetime.now().isoweekday()  # 1=Mon...7=Sun
         today_name = DAY_MAP.get(today_idx)
         if not today_name:
-            continue  # Dam olish kuni — yubormaslik
+            continue  # Dam olish kuni
 
         reminders = await get_active_reminders()
         log.info(f"Daily reminder: {len(reminders)} ta foydalanuvchi, kun: {today_name}")
@@ -619,17 +734,15 @@ async def daily_reminder_job():
 # ═══════════════════════════════════════════════════════════════════════════════
 async def on_startup():
     await create_db()
-    await get_pool()   # Pool oldindan isitish
+    await get_pool()
     await bot.delete_webhook(drop_pending_updates=True)
     await bot.set_webhook(f"{WEBHOOK_URL}/webhook")
-    log.info(f"✅ Webhook o'rnatildi: {WEBHOOK_URL}/webhook")
-
-    # Reminder scheduler background task
+    log.info(f"Webhook o'rnatildi: {WEBHOOK_URL}/webhook")
     asyncio.create_task(daily_reminder_job())
-    log.info("⏰ Daily reminder scheduler ishga tushdi")
+    log.info("Daily reminder scheduler ishga tushdi")
 
 async def health_check(request):
-    return web.Response(text="✅ Bot ishlayapti!", content_type="text/plain")
+    return web.Response(text="Bot ishlayapti!", content_type="text/plain")
 
 app = web.Application()
 SimpleRequestHandler(dispatcher=dp, bot=bot).register(app, path="/webhook")

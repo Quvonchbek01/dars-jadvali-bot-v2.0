@@ -5,7 +5,7 @@ from aiogram.types import (
 
 WEB_URL = "https://imjadval.netlify.app"
 
-# ── REPLY KEYBOARDS ───────────────────────────────────────────────────────────
+# REPLY KEYBOARDS
 
 def main_menu():
     return ReplyKeyboardMarkup(keyboard=[
@@ -24,13 +24,13 @@ def back_menu():
 
 def admin_menu():
     return ReplyKeyboardMarkup(keyboard=[
-        [KeyboardButton(text="📊 Umumiy statistika"), KeyboardButton(text="👥 Foydalanuvchilar")],
+        [KeyboardButton(text="📊 To'liq statistika"), KeyboardButton(text="👥 Foydalanuvchilar")],
         [KeyboardButton(text="📨 Broadcast"), KeyboardButton(text="📝 So'nggi fikrlar")],
-        [KeyboardButton(text="🔍 Foydalanuvchini qidirish"), KeyboardButton(text="⬅️ Orqaga")],
+        [KeyboardButton(text="🔍 Foydalanuvchi qidirish"), KeyboardButton(text="⬅️ Orqaga")],
     ], resize_keyboard=True)
 
 
-# ── INLINE KEYBOARDS ──────────────────────────────────────────────────────────
+# INLINE KEYBOARDS
 
 def start_inline():
     return InlineKeyboardMarkup(inline_keyboard=[
@@ -101,7 +101,6 @@ def admin_user_actions_inline(user_id: int, is_banned: bool):
     return InlineKeyboardMarkup(inline_keyboard=[
         [ban_btn],
         [InlineKeyboardButton(text="📨 Xabar yuborish", callback_data=f"dm:{user_id}")],
-        [InlineKeyboardButton(text="⬅️ Orqaga", callback_data="admin_users")],
     ])
 
 
