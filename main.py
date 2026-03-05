@@ -97,7 +97,7 @@ async def cmd_start(msg: Message, state: FSMContext):
     asyncio.create_task(
         register_user(msg.from_user.id, msg.from_user.full_name, msg.from_user.username)
     )
-    await react(msg, "👋")
+    await react(msg, "✍")
     await msg.answer(
         f"👋 Salom, <b>{msg.from_user.first_name}</b>!\n\n"
         f"🏫 <b>Forish IM</b> dars jadvali botiga xush kelibsiz!\n\n"
@@ -111,7 +111,7 @@ async def cmd_start(msg: Message, state: FSMContext):
 # ═══════════════════════════════════════════════════════════════════════════════
 @dp.message(F.text == "📊 Mening statistikam")
 async def user_stats_msg(msg: Message):
-    await react(msg, "👍")
+    await react(msg, "")
     await _send_user_stats(msg.from_user.id, msg)
 
 @dp.callback_query(F.data == "my_stats")
@@ -151,7 +151,7 @@ async def _send_user_stats(user_id: int, target, edit: bool = False):
 # ═══════════════════════════════════════════════════════════════════════════════
 @dp.message(F.text == "⏰ Eslatma")
 async def reminder_msg(msg: Message):
-    await react(msg, "🔥")
+    await react(msg, "👌")
     await _show_reminder_menu(msg.from_user.id, msg)
 
 @dp.callback_query(F.data == "reminder_menu")
@@ -206,7 +206,7 @@ async def disable_reminder_cb(cb: CallbackQuery):
 # ═══════════════════════════════════════════════════════════════════════════════
 @dp.message(F.text == "💬 Fikr bildirish")
 async def feedback_start_msg(msg: Message, state: FSMContext):
-    await react(msg, "🎉")
+    await react(msg, "❤️")
     await state.set_state(FeedbackState.rating)
     await msg.answer(
         "⭐ <b>Botni baholang</b>\n\nQuyidagilardan birini tanlang:",
@@ -263,11 +263,11 @@ async def handle_feedback_text(msg: Message, state: FSMContext):
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-#  ℹ️ Yordam  →  ❤️
+#  ℹ️ Yordam  
 # ═══════════════════════════════════════════════════════════════════════════════
 @dp.message(F.text == "ℹ️ Yordam")
 async def help_msg(msg: Message):
-    await react(msg, "❤")
+    await react(msg, "🤝")
     await msg.answer(
         "ℹ️ <b>Yordam</b>\n\n"
         "📚 <b>Dars jadvali</b> — Web ilova orqali dars jadvalini ko'rish\n"
@@ -311,7 +311,7 @@ async def back_main_cb(cb: CallbackQuery, state: FSMContext):
 @admin_only
 async def cmd_admin(msg: Message, state: FSMContext):
     await state.clear()
-    await react(msg, "🔥")
+    await react(msg, "🥱")
     stats = await get_full_stats()
     await msg.answer(
         f"🛡 <b>Admin panel</b>\n\n"
@@ -323,7 +323,7 @@ async def cmd_admin(msg: Message, state: FSMContext):
 @dp.message(F.text == "📊 To'liq statistika")
 @admin_only
 async def admin_full_stats(msg: Message):
-    await react(msg, "👍")
+    await react(msg, "🤝")
     stats  = await get_full_stats()
     growth = await get_growth_chart()
     if growth:
@@ -490,7 +490,7 @@ async def admin_feedbacks(msg: Message):
 @dp.message(F.text == "📨 Broadcast")
 @admin_only
 async def broadcast_start(msg: Message, state: FSMContext):
-    await react(msg, "🔥")
+    await react(msg, "✍️")
     await state.set_state(BroadcastState.text)
     await msg.answer(
         "✍️ Barcha foydalanuvchilarga yuboriladigan xabarni kiriting:\n\n"
@@ -585,7 +585,7 @@ async def unknown_msg(msg: Message, state: FSMContext):
 async def daily_reminder_job():
     while True:
         now    = datetime.now()
-        target = now.replace(hour=7, minute=30, second=0, microsecond=0)
+        target = now.replace(hour=2, minute=30, second=0, microsecond=0)
         if now >= target:
             target += timedelta(days=1)
         await asyncio.sleep((target - now).total_seconds())
