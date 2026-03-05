@@ -1,4 +1,3 @@
-
 import asyncio
 import os
 import logging
@@ -81,12 +80,14 @@ def admin_only(func):
 
 
 # ── REACTION HELPER ───────────────────────────────────────────────────────────
-async def react(msg: Message, emoji: str):
-    """Xabarga reaksiya qo'yadi."""
-    try:
-        await msg.react([ReactionTypeEmoji(emoji=emoji)])
-    except Exception as e:
-        log.warning(f"Reaction xatolik: {e}")
+def react(msg: Message, emoji: str):
+    """Xabarga reaksiya qo'yadi — asosiy handlerni bloklаmaydi."""
+    async def _do():
+        try:
+            await msg.react([ReactionTypeEmoji(emoji=emoji)])
+        except Exception as e:
+            log.warning(f"Reaction xatolik: {e}")
+    asyncio.create_task(_do())
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -303,18 +304,6 @@ async def back_main_cb(cb: CallbackQuery, state: FSMContext):
 # ═══════════════════════════════════════════════════════════════════════════════
 #  Noma'lum xabar  →  🤔
 # ═══════════════════════════════════════════════════════════════════════════════
-@dp.message(F.text & ~F.text.startswith("/"))
-async def unknown_msg(msg: Message, state: FSMContext):
-    cur = await state.get_state()
-    if cur is not None:
-        return
-    await react(msg, "🤔")
-    await msg.answer(
-        "Pastdagi tugmalardan foydalaning 👇",
-        reply_markup=main_menu()
-    )
-
-
 # ═══════════════════════════════════════════════════════════════════════════════
 #  🛡 ADMIN PANEL
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -575,6 +564,21 @@ async def broadcast_cancel(cb: CallbackQuery, state: FSMContext):
     await state.clear()
     await cb.answer("❌ Bekor qilindi")
     await cb.message.edit_text("❌ Broadcast bekor qilindi.")
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#  Noma'lum xabar — eng oxirida, barcha handlerlardan keyin  →  🤔
+# ═══════════════════════════════════════════════════════════════════════════════
+@dp.message()
+async def unknown_msg(msg: Message, state: FSMContext):
+    cur = await state.get_state()
+    if cur is not None:
+        return
+    await react(msg, "🤔")
+    await msg.answer(
+        "Pastdagi tugmalardan foydalaning 👇",
+        reply_markup=main_menu()
+    )
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
