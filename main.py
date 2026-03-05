@@ -111,7 +111,7 @@ async def cmd_start(msg: Message, state: FSMContext):
 # ═══════════════════════════════════════════════════════════════════════════════
 @dp.message(F.text == "📊 Mening statistikam")
 async def user_stats_msg(msg: Message):
-    await react(msg, "")
+    await react(msg, "👏")
     await _send_user_stats(msg.from_user.id, msg)
 
 @dp.callback_query(F.data == "my_stats")
