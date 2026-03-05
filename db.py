@@ -209,6 +209,9 @@ async def get_user_stats(user_id: int):
         WHERE user_id=$1
         """, user_id)
 
+        if not user:
+            return None
+
         views = await conn.fetchval("""
         SELECT COUNT(*) FROM schedule_views
         WHERE user_id=$1
@@ -223,7 +226,14 @@ async def get_user_stats(user_id: int):
         LIMIT 1
         """, user_id)
 
-        return user, views, fav
+        return {
+            "usage_count": user["usage_count"],
+            "joined_at": user["joined_at"],
+            "last_active": user["last_active"],
+            "views": views,
+            "favorite_class": fav["class_name"] if fav else None,
+            "favorite_count": fav["cnt"] if fav else 0
+        }
 
 
 # SCHEDULE VIEWS
