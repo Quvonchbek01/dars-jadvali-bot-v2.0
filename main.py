@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 from functools import wraps
 
 from aiogram import Bot, Dispatcher, F, types
+from aiogram.client.default import DefaultBotProperties
 from aiogram.filters import Command, CommandStart
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -24,7 +25,7 @@ from db import (
     ban_user, unban_user, get_all_users, search_user,
     get_full_stats, get_user_stats, get_growth_chart,
     save_feedback, get_recent_feedback,
-    log_schedule_view, set_reminder, toggle_reminder, get_active_reminders
+    set_reminder, toggle_reminder, get_active_reminders
 )
 from keyboards import (
     main_menu, back_menu, admin_menu,
@@ -45,7 +46,7 @@ WEBHOOK_URL = os.getenv("WEBHOOK_URL")
 PORT        = int(os.getenv("PORT", 10000))
 ADMIN_ID    = 5883662749
 
-bot = Bot(token=TOKEN, parse_mode="HTML")
+bot = Bot(token=TOKEN, default=DefaultBotProperties(parse_mode="HTML"))
 dp  = Dispatcher(storage=MemoryStorage())
 
 # ── MIDDLEWARES ───────────────────────────────────────────────────────────────
@@ -85,51 +86,52 @@ def admin_only(func):
 
 
 # ── REACTIONS ─────────────────────────────────────────────────────────────────
-REACTIONS = {
-    "salom":      "👋",
-    "assalomu":   "👋",
-    "xayr":       "👋",
-    "hayr":       "👋",
-    "rahmat":     "🙏",
-    "raxmat":     "🙏",
-    "tashakkur":  "🙏",
-    "yaxshi":     "👍",
-    "zo'r":       "🔥",
-    "super":      "🔥",
-    "ajoyib":     "🎉",
-    "barakalla":  "🏆",
-    "ha":         "👍",
-    "yomon":      "😢",
-    "xato":       "😢",
-    "ishlamaydi": "🤔",
-    "muammo":     "🤔",
-    "haha":       "😂",
-    "lol":        "😂",
-    "?":          "🤔",
-}
-DEFAULT_REACTIONS = ["👍", "❤️", "🔥", "👀"]
+# aiogram 3.16+ da set_message_reaction to'liq ishlaydi
 
-async def send_reaction(msg: Message):
-    """Foydalanuvchi xabariga vaziyatga mos reaksiya — faqat oddiy foydalanuvchilarga"""
+REACTIONS = {
+    "salom":       "👋",
+    "assalomu":    "👋",
+    "xayr":        "👋",
+    "hayr":        "👋",
+    "rahmat":      "🙏",
+    "raxmat":      "🙏",
+    "tashakkur":   "🙏",
+    "yaxshi":      "👍",
+    "zo'r":        "🔥",
+    "super":       "🔥",
+    "ajoyib":      "🎉",
+    "barakalla":   "🏆",
+    "yomon":       "😢",
+    "xato":        "😢",
+    "ishlamaydi":  "🤔",
+    "muammo":      "🤔",
+    "qiyin":       "🤔",
+    "haha":        "😂",
+    "lol":         "😂",
+    "ha":          "👍",
+    "ok":          "👌",
+    "?":           "🤔",
+    "love":        "❤️",
+    "sevaman":     "❤️",
+}
+DEFAULT_REACTIONS = ["👍", "❤️", "🔥", "👀", "🎉"]
+
+async def send_reaction(msg: Message, emoji: str = None):
+    """Xabarga reaksiya qo'yadi. Faqat foydalanuvchilarga — adminga emas."""
     if msg.from_user.id == ADMIN_ID:
         return
-    text = (msg.text or "").lower()
-    emoji = None
-    for word, reaction in REACTIONS.items():
-        if word in text:
-            emoji = reaction
-            break
     if not emoji:
-        if random.random() < 0.65:
-            emoji = random.choice(DEFAULT_REACTIONS)
-    if emoji:
-        try:
-            await bot.set_message_reaction(
-                msg.chat.id, msg.message_id,
-                [ReactionTypeEmoji(emoji=emoji)]
-            )
-        except Exception:
-            pass
+        text = (msg.text or "").lower()
+        for word, reaction in REACTIONS.items():
+            if word in text:
+                emoji = reaction
+                break
+    if not emoji:
+        emoji = random.choice(DEFAULT_REACTIONS)
+    try:
+        await msg.react([ReactionTypeEmoji(emoji=emoji)])
+    except Exception as e:
+        log.warning(f"Reaction xatolik: {e}")
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -141,13 +143,7 @@ async def cmd_start(msg: Message, state: FSMContext):
     asyncio.create_task(
         register_user(msg.from_user.id, msg.from_user.full_name, msg.from_user.username)
     )
-    try:
-        await bot.set_message_reaction(
-            msg.chat.id, msg.message_id,
-            [ReactionTypeEmoji(emoji="👋")]
-        )
-    except Exception:
-        pass
+    await send_reaction(msg, "👋")
     await msg.answer(
         f"👋 Salom, <b>{msg.from_user.first_name}</b>!\n\n"
         f"🏫 <b>Forish IM</b> dars jadvali botiga xush kelibsiz!\n\n"
@@ -170,20 +166,17 @@ async def user_stats_cb(cb: CallbackQuery):
     await _send_user_stats(cb.from_user.id, cb.message, edit=True)
 
 async def _send_user_stats(user_id: int, target, edit: bool = False):
-    user, views, fav = await get_user_stats(user_id)
+    user = await get_user_stats(user_id)
     if not user:
         text = "📊 Ma'lumot topilmadi."
     else:
-        joined  = user['joined_at'].strftime('%d.%m.%Y')
-        last    = user['last_active'].strftime('%d.%m.%Y %H:%M')
-        fav_cls = fav['class_name'] if fav else "—"
-        level   = min(user['usage_count'] // 10, 10)
-        bar     = "█" * level + "░" * (10 - level)
+        joined = user['joined_at'].strftime('%d.%m.%Y')
+        last   = user['last_active'].strftime('%d.%m.%Y %H:%M')
+        level  = min(user['usage_count'] // 10, 10)
+        bar    = "█" * level + "░" * (10 - level)
         text = (
             f"📊 <b>Sizning statistikangiz</b>\n\n"
             f"👤 Foydalanish soni: <b>{user['usage_count']}</b> marta\n"
-            f"👁 Ko'rilgan jadvallar: <b>{views}</b> ta\n"
-            f"🏆 Eng ko'p: <b>{fav_cls}</b>\n\n"
             f"📅 Ro'yxatdan o'tgan: <b>{joined}</b>\n"
             f"🕐 So'nggi faollik: <b>{last}</b>\n\n"
             f"<b>Faollik darajasi:</b>\n"
@@ -306,12 +299,7 @@ async def handle_feedback_text(msg: Message, state: FSMContext):
             f"📝 {msg.text}"
         )
     )
-    try:
-        await bot.set_message_reaction(
-            msg.chat.id, msg.message_id, [ReactionTypeEmoji(emoji="🙏")]
-        )
-    except Exception:
-        pass
+    await send_reaction(msg, "🙏")
     await msg.answer(
         "✅ <b>Fikringiz qabul qilindi!</b>\n\nRahmat! 🙏",
         reply_markup=main_menu()
@@ -604,6 +592,7 @@ async def broadcast_cancel(cb: CallbackQuery, state: FSMContext):
 # ═══════════════════════════════════════════════════════════════════════════════
 #  ⏰ DAILY REMINDER (07:30 har kuni)
 # ═══════════════════════════════════════════════════════════════════════════════
+
 async def daily_reminder_job():
     while True:
         now    = datetime.now()
@@ -644,6 +633,7 @@ async def on_startup():
     await bot.set_webhook(f"{WEBHOOK_URL}/webhook")
     log.info(f"✅ Webhook: {WEBHOOK_URL}/webhook")
     asyncio.create_task(daily_reminder_job())
+    asyncio.create_task(keep_alive_job())
     log.info("⏰ Daily reminder scheduler ishga tushdi")
 
 async def health_check(request):
