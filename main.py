@@ -80,14 +80,12 @@ def admin_only(func):
 
 
 # ── REACTION HELPER ───────────────────────────────────────────────────────────
-def react(msg: Message, emoji: str):
-    """Xabarga reaksiya qo'yadi — asosiy handlerni bloklаmaydi."""
-    async def _do():
-        try:
-            await msg.react([ReactionTypeEmoji(emoji=emoji)])
-        except Exception as e:
-            log.warning(f"Reaction xatolik: {e}")
-    asyncio.create_task(_do())
+async def react(msg: Message, emoji: str):
+    """Xabarga reaksiya qo'yadi — xato chiqsa handler to'xtamaydi."""
+    try:
+        await msg.react([ReactionTypeEmoji(emoji=emoji)])
+    except Exception as e:
+        log.warning(f"Reaction xatolik: {e}")
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
