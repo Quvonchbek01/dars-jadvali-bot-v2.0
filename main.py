@@ -169,7 +169,7 @@ async def _show_reminder_menu(user_id: int, target, edit: bool = False):
     cls    = rem['class_name'] if rem else None
     text = (
         f"⏰ <b>Kunlik eslatma</b>\n\n"
-        f"Har kuni ertalab <b>07:30</b> da bugungi dars jadvalingiz yuboriladi.\n\n"
+        f"Har kuni ertalab <b>07:00</b> da bugungi dars jadvalingiz yuboriladi.\n\n"
         f"Holat: {status}\n"
         f"{'Sinf: <b>' + cls + '</b>' if cls else ''}\n\n"
         f"<i>Sinfingizni tanlang:</i>"
@@ -272,7 +272,7 @@ async def help_msg(msg: Message):
         "ℹ️ <b>Yordam</b>\n\n"
         "📚 <b>Dars jadvali</b> — Web ilova orqali dars jadvalini ko'rish\n"
         "📊 <b>Statistika</b> — Faollik statistikangiz haqida ma'lumot\n"
-        "⏰ <b>Eslatma</b> — Kunlik bildirishnoma (07:30)\n"
+        "⏰ <b>Eslatma</b> — Kunlik bildirishnoma (07:00)\n"
         "💬 <b>Fikr bildirish</b> — Taklif va shikoyatlar uchun\n\n"
         "📞 Admin: @from_america\n"
         "🌐 Kanal: t.me/+zg9gHcIqry40YzMy",
@@ -585,7 +585,7 @@ async def unknown_msg(msg: Message, state: FSMContext):
 async def daily_reminder_job():
     while True:
         now    = datetime.now()
-        target = now.replace(hour=2, minute=30, second=0, microsecond=0)
+        target = now.replace(hour=2, minute=00, second=0, microsecond=0)
         if now >= target:
             target += timedelta(days=1)
         await asyncio.sleep((target - now).total_seconds())
