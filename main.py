@@ -132,7 +132,7 @@ async def _send_user_stats(user_id: int, target, edit: bool = False):
             f"📊 <b>Sizning statistikangiz</b>\n\n"
             f"👤 Foydalanish soni: <b>{user['usage_count']}</b> marta\n"
             f"📅 Ro'yxatdan o'tgan: <b>{joined}</b>\n"
-            f"🕐 So'nggi faollik: <b>{last}</b>\n\n"
+            f"🕐 So'nggi faollik: <b>{last} UTC</b>\n\n"
             f"<b>Faollik darajasi:</b>\n"
             f"<code>[{bar}]</code> {level * 10}%"
         )
