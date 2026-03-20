@@ -58,13 +58,20 @@ async def create_db():
             enabled BOOLEAN DEFAULT TRUE
         );
 
+        CREATE TABLE IF NOT EXISTS reminder_pauses (
+            id           SERIAL PRIMARY KEY,
+            paused_until DATE        NOT NULL,
+            note         TEXT,
+            created_at   TIMESTAMPTZ DEFAULT NOW()
+        );
+
         CREATE INDEX IF NOT EXISTS idx_users_last_active ON users(last_active);
         CREATE INDEX IF NOT EXISTS idx_views_user ON schedule_views(user_id);
         CREATE INDEX IF NOT EXISTS idx_views_class ON schedule_views(class_name);
         """)
 
 
-# USER
+# ── USER ──────────────────────────────────────────────────────────────────────
 
 async def register_user(user_id: int, full_name: str, username: str = None):
     pool = await get_pool()
@@ -88,6 +95,7 @@ async def get_user(user_id: int):
             user_id
         )
 
+
 async def get_growth_chart():
     pool = await get_pool()
     async with pool.acquire() as conn:
@@ -99,7 +107,8 @@ async def get_growth_chart():
             ORDER BY day
         """)
         return rows
-        
+
+
 async def is_banned(user_id: int):
     pool = await get_pool()
     async with pool.acquire() as conn:
@@ -158,7 +167,7 @@ async def search_user(query: str):
         """, f"%{query}%", query)
 
 
-# STATISTICS
+# ── STATISTICS ────────────────────────────────────────────────────────────────
 
 async def get_full_stats():
     pool = await get_pool()
@@ -236,7 +245,7 @@ async def get_user_stats(user_id: int):
         }
 
 
-# SCHEDULE VIEWS
+# ── SCHEDULE VIEWS ────────────────────────────────────────────────────────────
 
 async def log_schedule_view(user_id: int, class_name: str, day_name: str):
     pool = await get_pool()
@@ -247,7 +256,7 @@ async def log_schedule_view(user_id: int, class_name: str, day_name: str):
         )
 
 
-# FEEDBACK
+# ── FEEDBACK ──────────────────────────────────────────────────────────────────
 
 async def save_feedback(user_id: int, text: str, rating: int = None):
     pool = await get_pool()
@@ -270,7 +279,7 @@ async def get_recent_feedback(limit: int = 10):
         """, limit)
 
 
-# REMINDERS
+# ── REMINDERS ─────────────────────────────────────────────────────────────────
 
 async def set_reminder(user_id: int, class_name: str):
     pool = await get_pool()
@@ -310,3 +319,42 @@ async def get_active_reminders():
         return await conn.fetch(
             "SELECT user_id,class_name FROM reminders WHERE enabled=TRUE"
         )
+
+
+# ── REMINDER PAUSES ───────────────────────────────────────────────────────────
+
+async def set_global_pause(until_date: str, note: str = None):
+    """
+    Eslatmani to'xtatadi.
+    until_date — 'YYYY-MM-DD' formatida sana (shu kun ham o'chiriladi).
+    Avvalgi barcha pauza yozuvlarini o'chirib, yangi yozadi.
+    """
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        await conn.execute("DELETE FROM reminder_pauses")
+        await conn.execute(
+            "INSERT INTO reminder_pauses (paused_until, note) VALUES ($1, $2)",
+            until_date, note
+        )
+
+
+async def clear_global_pause():
+    """Faol pauzani bekor qiladi — eslatmalar yana ishlaydi."""
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        await conn.execute("DELETE FROM reminder_pauses")
+
+
+async def get_global_pause():
+    """
+    Hozir aktiv pauza bormi?
+    Qaytaradi: {'paused_until': date, 'note': str} yoki None.
+    """
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            "SELECT paused_until, note FROM reminder_pauses "
+            "WHERE paused_until >= CURRENT_DATE "
+            "ORDER BY paused_until DESC LIMIT 1"
+        )
+    return dict(row) if row else None
