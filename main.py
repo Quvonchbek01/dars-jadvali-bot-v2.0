@@ -21,7 +21,8 @@ from db import (
     ban_user, unban_user, get_all_users, search_user,
     get_full_stats, get_user_stats, get_growth_chart,
     save_feedback, get_recent_feedback,
-    set_reminder, toggle_reminder, get_active_reminders
+    set_reminder, toggle_reminder, get_active_reminders,
+    set_global_pause, clear_global_pause, get_global_pause
 )
 from keyboards import (
     main_menu, back_menu, admin_menu,
@@ -62,6 +63,7 @@ class BroadcastState(StatesGroup):
 class AdminState(StatesGroup):
     search_user = State()
     dm_user     = State()
+    pause_input = State()
 
 
 # ── ADMIN DECORATOR ───────────────────────────────────────────────────────────
@@ -107,7 +109,7 @@ async def cmd_start(msg: Message, state: FSMContext):
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-#  📊 Statistika  →  📊
+#  📊 Statistika
 # ═══════════════════════════════════════════════════════════════════════════════
 @dp.message(F.text == "📊 Mening statistikam")
 async def user_stats_msg(msg: Message):
@@ -147,7 +149,7 @@ async def _send_user_stats(user_id: int, target, edit: bool = False):
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-#  ⏰ Eslatma  →  ⏰
+#  ⏰ Eslatma
 # ═══════════════════════════════════════════════════════════════════════════════
 @dp.message(F.text == "⏰ Eslatma")
 async def reminder_msg(msg: Message):
@@ -202,7 +204,7 @@ async def disable_reminder_cb(cb: CallbackQuery):
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-#  💬 Fikr bildirish  →  🎉  |  Fikr yozganda  →  🙏
+#  💬 Fikr bildirish
 # ═══════════════════════════════════════════════════════════════════════════════
 @dp.message(F.text == "💬 Fikr bildirish")
 async def feedback_start_msg(msg: Message, state: FSMContext):
@@ -263,7 +265,7 @@ async def handle_feedback_text(msg: Message, state: FSMContext):
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-#  ℹ️ Yordam  
+#  ℹ️ Yordam
 # ═══════════════════════════════════════════════════════════════════════════════
 @dp.message(F.text == "ℹ️ Yordam")
 async def help_msg(msg: Message):
@@ -281,7 +283,7 @@ async def help_msg(msg: Message):
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-#  ⬅️ Orqaga  →  👌
+#  ⬅️ Orqaga
 # ═══════════════════════════════════════════════════════════════════════════════
 @dp.message(F.text == "⬅️ Orqaga")
 async def go_back(msg: Message, state: FSMContext):
@@ -300,9 +302,6 @@ async def back_main_cb(cb: CallbackQuery, state: FSMContext):
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-#  Noma'lum xabar  →  🤔
-# ═══════════════════════════════════════════════════════════════════════════════
-# ═══════════════════════════════════════════════════════════════════════════════
 #  🛡 ADMIN PANEL
 # ═══════════════════════════════════════════════════════════════════════════════
 
@@ -313,9 +312,14 @@ async def cmd_admin(msg: Message, state: FSMContext):
     await state.clear()
     await react(msg, "🥱")
     stats = await get_full_stats()
+    pause = await get_global_pause()
+    pause_line = ""
+    if pause:
+        until = pause['paused_until'].strftime('%d.%m.%Y')
+        pause_line = f"\n⏸ Eslatma to'xtatilgan: <b>{until}</b> gacha"
     await msg.answer(
         f"🛡 <b>Admin panel</b>\n\n"
-        f"👥 Jami: <b>{stats['total']}</b> | Bugun: <b>{stats['today']}</b>",
+        f"👥 Jami: <b>{stats['total']}</b> | Bugun: <b>{stats['today']}</b>{pause_line}",
         reply_markup=admin_menu()
     )
 
@@ -542,4 +546,187 @@ async def broadcast_exec(cb: CallbackQuery, state: FSMContext):
             fail += 1
 
     for i in range(0, len(users), 25):
-        await asyncio.gather(*[send_
+        await asyncio.gather(*[send_one(u) for u in users[i:i + 25]])
+        await asyncio.sleep(0.05)
+        if i % 100 == 0 and i > 0:
+            try:
+                await status_msg.edit_text(f"⏳ {sent + fail} / {len(users)} ...")
+            except Exception:
+                pass
+
+    await status_msg.edit_text(
+        f"✅ <b>Broadcast yakunlandi!</b>\n\n"
+        f"📤 Yuborildi: <b>{sent}</b>\n"
+        f"❌ Xatolik: <b>{fail}</b>"
+    )
+
+@dp.callback_query(F.data == "broadcast_cancel")
+@admin_only
+async def broadcast_cancel(cb: CallbackQuery, state: FSMContext):
+    await state.clear()
+    await cb.answer("❌ Bekor qilindi")
+    await cb.message.edit_text("❌ Broadcast bekor qilindi.")
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#  ⏸ ESLATMA PAUZA (ADMIN)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@dp.message(F.text == "⏸ Eslatmani to'xtatish")
+@admin_only
+async def admin_pause_start(msg: Message, state: FSMContext):
+    await react(msg, "⏸")
+    pause = await get_global_pause()
+    pause_info = ""
+    if pause:
+        until = pause['paused_until'].strftime('%d.%m.%Y')
+        note  = f"\n📝 Sabab: {pause['note']}" if pause.get('note') else ""
+        pause_info = f"\n\n⚠️ Hozir aktiv pauza bor: <b>{until}</b> gacha{note}"
+
+    await state.set_state(AdminState.pause_input)
+    await msg.answer(
+        f"⏸ <b>Eslatmani to'xtatish</b>{pause_info}\n\n"
+        f"📅 Tugash sanasini kiriting (shu kun ham o'chiriladi):\n"
+        f"<code>YYYY-MM-DD</code> formatida, masalan: <code>2026-04-01</code>\n\n"
+        f"<i>Ixtiyoriy: sana + sabab, masalan:</i>\n"
+        f"<code>2026-04-01 Bahorgi ta'til</code>",
+        reply_markup=back_menu()
+    )
+
+@dp.message(AdminState.pause_input)
+@admin_only
+async def admin_pause_exec(msg: Message, state: FSMContext):
+    if msg.text == "⬅️ Orqaga":
+        await react(msg, "👌")
+        await state.clear()
+        await msg.answer("🛡 Admin panel", reply_markup=admin_menu())
+        return
+
+    parts    = msg.text.strip().split(maxsplit=1)
+    date_str = parts[0]
+    note     = parts[1] if len(parts) > 1 else None
+
+    try:
+        parsed = datetime.strptime(date_str, "%Y-%m-%d").date()
+    except ValueError:
+        await msg.answer(
+            "❌ Noto'g'ri format. Qaytadan kiriting:\n"
+            "<code>YYYY-MM-DD</code>  yoki  <code>YYYY-MM-DD Sabab</code>"
+        )
+        return
+
+    today = datetime.now().date()
+    if parsed < today:
+        await msg.answer("❌ Sana o'tgan. Bugun yoki kelajakdagi sana kiriting.")
+        return
+
+    await set_global_pause(date_str, note)
+    await react(msg, "⏸")
+    days = (parsed - today).days + 1
+    note_text = f"\n📝 Sabab: <i>{note}</i>" if note else ""
+    await state.clear()
+    await msg.answer(
+        f"✅ <b>Eslatma to'xtatildi!</b>\n\n"
+        f"📅 <b>{parsed.strftime('%d.%m.%Y')}</b> gacha ({days} kun){note_text}\n\n"
+        f"Bu muddat davomida hech kimga eslatma yuborilmaydi.",
+        reply_markup=admin_menu()
+    )
+
+@dp.message(F.text == "▶️ Eslatmani yoqish")
+@admin_only
+async def admin_pause_clear(msg: Message):
+    pause = await get_global_pause()
+    if not pause:
+        await msg.answer("ℹ️ Hozirda aktiv pauza yo'q.", reply_markup=admin_menu())
+        return
+    await clear_global_pause()
+    await react(msg, "▶️")
+    await msg.answer(
+        "✅ <b>Pauza bekor qilindi!</b>\n\nEslatmalar ertadan boshlab yana ishlaydi.",
+        reply_markup=admin_menu()
+    )
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#  Noma'lum xabar — eng oxirida, barcha handlerlardan keyin
+# ═══════════════════════════════════════════════════════════════════════════════
+@dp.message()
+async def unknown_msg(msg: Message, state: FSMContext):
+    cur = await state.get_state()
+    if cur is not None:
+        return
+    await react(msg, "🤔")
+    await msg.answer(
+        "Pastdagi tugmalardan foydalaning 👇",
+        reply_markup=main_menu()
+    )
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#  ⏰ DAILY REMINDER
+# ═══════════════════════════════════════════════════════════════════════════════
+async def daily_reminder_job():
+    while True:
+        now    = datetime.now()
+        target = now.replace(hour=2, minute=0, second=0, microsecond=0)
+        if now >= target:
+            target += timedelta(days=1)
+        await asyncio.sleep((target - now).total_seconds())
+
+        # ── PAUZA TEKSHIRUVI ─────────────────────────────────────────────────
+        pause = await get_global_pause()
+        if pause:
+            until = pause['paused_until'].strftime('%d.%m.%Y')
+            note  = f" ({pause['note']})" if pause.get('note') else ""
+            log.info(f"Daily reminder SKIP — pauza aktiv: {until}{note}")
+            continue
+        # ─────────────────────────────────────────────────────────────────────
+
+        today_idx  = datetime.now().isoweekday()
+        today_name = DAY_MAP.get(today_idx)
+        if not today_name:
+            continue
+
+        reminders = await get_active_reminders()
+        log.info(f"Daily reminder: {len(reminders)} ta, kun: {today_name}")
+        for rem in reminders:
+            try:
+                text = format_schedule(rem['class_name'], today_name)
+                if text:
+                    await bot.send_message(
+                        rem['user_id'],
+                        f"☀️ <b>Xayrli tong!</b> Bugun <b>{today_name}</b>\n\n" + text
+                    )
+                    await asyncio.sleep(0.05)
+            except (TelegramForbiddenError, TelegramBadRequest):
+                pass
+            except Exception as e:
+                log.error(f"Reminder xatolik {rem['user_id']}: {e}")
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#  STARTUP / SERVER
+# ═══════════════════════════════════════════════════════════════════════════════
+async def on_startup():
+    await create_db()
+    await get_pool()
+    await bot.delete_webhook(drop_pending_updates=True)
+    await bot.set_webhook(f"{WEBHOOK_URL}/webhook")
+    log.info(f"Webhook: {WEBHOOK_URL}/webhook")
+    asyncio.create_task(daily_reminder_job())
+    log.info("Daily reminder scheduler ishga tushdi")
+
+async def health_check(request):
+    return web.Response(text="Bot ishlayapti!", content_type="text/plain")
+
+app = web.Application()
+SimpleRequestHandler(dispatcher=dp, bot=bot).register(app, path="/webhook")
+setup_application(app, dp)
+app.router.add_get("/", health_check)
+
+async def main():
+    await on_startup()
+    await web._run_app(app, host="0.0.0.0", port=PORT)
+
+if __name__ == "__main__":
+    asyncio.run(main())
