@@ -329,12 +329,14 @@ async def set_global_pause(until_date: str, note: str = None):
     until_date — 'YYYY-MM-DD' formatida sana (shu kun ham o'chiriladi).
     Avvalgi barcha pauza yozuvlarini o'chirib, yangi yozadi.
     """
+    from datetime import date
+    parsed = date.fromisoformat(until_date)
     pool = await get_pool()
     async with pool.acquire() as conn:
         await conn.execute("DELETE FROM reminder_pauses")
         await conn.execute(
             "INSERT INTO reminder_pauses (paused_until, note) VALUES ($1, $2)",
-            until_date, note
+            parsed, note
         )
 
 
