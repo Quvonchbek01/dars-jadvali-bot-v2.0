@@ -103,7 +103,7 @@ async def cmd_start(msg: Message, state: FSMContext):
     await msg.answer(
         f"👋 Salom, <b>{msg.from_user.first_name}</b>!\n\n"
         f"🏫 <b>Forish IM</b> dars jadvali botiga xush kelibsiz!\n\n"
-        f"📚 <i>Dars jadvalini ko'rish uchun 'Dars jadvali' tugmasini bosing.</i>"
+        f"📚 <i>Dars jadvalini ko'rish uchun 'Dars jadvali' tugmasini bosing.</i>\n\n"
         f"⏰ <i>Kunlik dars jadvallaridan boxabar bo'lish uchun 'Eslatma' funksiyasidan foydalaning.</i>", reply_markup=main_menu()
     )
 
